@@ -1,0 +1,48 @@
+# Enable the experimental disks feature via environment variable, requires Vagrant >=2.2.8.
+ENV["VAGRANT_EXPERIMENTAL"] = "disks"
+
+Vagrant.configure("2") do |config|
+  # Disable the automatic update of VirtualBox Guest Additions
+  if Vagrant.has_plugin?("vagrant-vbguest")
+    config.vbguest.auto_update = false
+  end
+
+  # Edge Node
+  config.vm.define "mapr-demo" do |edge|
+    edge.vm.box = "ubuntu/focal64"
+    edge.vm.hostname = "mapr-edge-data2-ai.com"
+
+    # Set memory, CPU, and disk resources
+    edge.vm.disk :disk, size: "30GB", primary: true
+    edge.vm.provider "virtualbox" do |vb|
+      vb.memory = 8000  # 8 GB RAM
+      vb.cpus = 8       # 8 CPUs
+    end
+
+    # Ports forwarding
+    edge_ports = {
+      22 => 2220,
+      # Add more port mappings here if needed
+    }
+
+    edge_ports.each do |guest, host|
+      edge.vm.network "forwarded_port", guest: guest, host: host, auto_correct: true
+    end
+
+    # NAT adapter for internet access
+    edge.vm.network "public_network", type: "static", ip: "192.168.56.10", bridge: "ens160"
+
+    # Internal/private network for communication between VMs
+    edge.vm.network "private_network", type: "static", ip: "192.168.56.10", virtualbox__intnet: true, name: "mapr-cluster-net"
+
+    # Copy hosts file
+    edge.vm.provision "file", source: "external_hosts", destination: "/tmp/hosts"
+    edge.vm.provision "shell", inline: "sudo mv /tmp/hosts /etc/hosts"
+    edge.vm.provision "file", source: "/home/user2/mapr-cluster/.ssh/id_rsa", destination: "/home/vagrant/.ssh/id_rsa"
+    edge.vm.provision "file", source: "/home/user2/mapr-cluster/.ssh/id_rsa.pub", destination: "/home/vagrant/.ssh/id_rsa.pub"
+    edge.vm.provision "file", source: "/home/user2/mapr-cluster/.ssh/id_rsa.pub", destination: "/home/vagrant/.ssh/authorized_keys"
+
+    # Provisioning with a shell script
+    edge.vm.provision "shell", path: "install_packages.sh"
+  end
+end
